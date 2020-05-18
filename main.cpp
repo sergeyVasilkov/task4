@@ -16,7 +16,8 @@ int readers_done_count = 0;
 
 pthread_rwlock_t myLockRead;
 pthread_rwlock_t myLockFile;
-
+pthread_rwlock_t myLockFlags;
+pthread_rwlock_t myLockCount;
 
 FILE *file = fopen ("test.txt","w");
 
@@ -33,11 +34,14 @@ void err_quit(const char *fmt, ...) {
 
 //проверка на то, все ли читатели прочитали данные из буфера
 bool checkAllReadersDone(){
+    pthread_rwlock_rdlock(&myLockFlags);
     for(bool i : readers_done){
         if(!i){
+            pthread_rwlock_unlock(&myLockFlags);
             return false;
         }
     }
+    pthread_rwlock_unlock(&myLockFlags);
     return true;
 }
 
@@ -47,10 +51,17 @@ void *thr_fn_write(void *arg) {
             pthread_rwlock_wrlock(&myLockRead);
             buffer = new char [BUFFER_SIZE];
             read(0, buffer, 1024);
+
+            pthread_rwlock_wrlock(&myLockFlags);
             for(bool & i : readers_done){
                 i = false;
             }
+            pthread_rwlock_unlock(&myLockFlags);
+
+            pthread_rwlock_wrlock(&myLockCount);
             readers_done_count = 0;
+            pthread_rwlock_unlock(&myLockCount);
+
             if (strcmp(buffer, "quit\n") == 0) {
                 pthread_rwlock_unlock(&myLockRead);
                 pthread_exit((void *) arg);
@@ -72,14 +83,21 @@ void *thr_fn_read(void *arg) {
             pthread_exit((void *) arg);
         }
         else {
+            pthread_rwlock_wrlock(&myLockCount);
             if (readers_done_count < READERS_COUNT) {
+
+                pthread_rwlock_wrlock(&myLockFlags);
                 readers_done[readers_done_count] = true;
+                pthread_rwlock_unlock(&myLockFlags);
+
                 readers_done_count++;
 
                 pthread_rwlock_wrlock(&myLockFile);
                 write(fileno(file), buffer, BUFFER_SIZE);
                 pthread_rwlock_unlock(&myLockFile);
             }
+            pthread_rwlock_unlock(&myLockCount);
+
             pthread_rwlock_unlock(&myLockRead);
         }
     }
@@ -94,6 +112,8 @@ int main() {
 
     pthread_rwlock_init(&myLockRead, nullptr);
     pthread_rwlock_init(&myLockFile, nullptr);
+    pthread_rwlock_init(&myLockFlags, nullptr);
+    pthread_rwlock_init(&myLockCount, nullptr);
 
     for(bool & i : readers_done){
         i = true;
@@ -127,5 +147,7 @@ int main() {
     delete[] buffer;
     pthread_rwlock_destroy(&myLockRead);
     pthread_rwlock_destroy(&myLockFile);
+    pthread_rwlock_destroy(&myLockFlags);
+    pthread_rwlock_destroy(&myLockCount);
     return 0;
 }
