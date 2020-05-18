@@ -46,11 +46,15 @@ bool checkAllReadersDone(){
 }
 
 void *thr_fn_write(void *arg) {
-   while (true) {
+    while (true) {
         if (checkAllReadersDone()) {
+            string bufferData;
+
             pthread_rwlock_wrlock(&myLockRead);
             buffer = new char [BUFFER_SIZE];
             read(0, buffer, 1024);
+            bufferData = buffer;
+            pthread_rwlock_unlock(&myLockRead);
 
             pthread_rwlock_wrlock(&myLockFlags);
             for(bool & i : readers_done){
@@ -62,44 +66,40 @@ void *thr_fn_write(void *arg) {
             readers_done_count = 0;
             pthread_rwlock_unlock(&myLockCount);
 
-            if (strcmp(buffer, "quit\n") == 0) {
-                pthread_rwlock_unlock(&myLockRead);
+            if (strcmp(bufferData.c_str(), "quit\n") == 0) {
                 pthread_exit((void *) arg);
             }
-            else {
-                pthread_rwlock_unlock(&myLockRead);
-            }
-
         }
-   }
+    }
 
 }
 
 void *thr_fn_read(void *arg) {
     while(true) {
+        string bufferData;
+
         pthread_rwlock_rdlock(&myLockRead);
-        if (strcmp(buffer , "quit\n") == 0) {
-            pthread_rwlock_unlock(&myLockRead);
-            pthread_exit((void *) arg);
+        bufferData = buffer;
+        pthread_rwlock_unlock(&myLockRead);
+
+
+        if(strcmp(bufferData.c_str(),"quit\n")==0){
+            pthread_exit((void *)arg);
         }
-        else {
-            pthread_rwlock_wrlock(&myLockCount);
-            if (readers_done_count < READERS_COUNT) {
 
-                pthread_rwlock_wrlock(&myLockFlags);
-                readers_done[readers_done_count] = true;
-                pthread_rwlock_unlock(&myLockFlags);
+        pthread_rwlock_wrlock(&myLockCount);
+        if(readers_done_count < READERS_COUNT){
+            pthread_rwlock_wrlock(&myLockFlags);
+            readers_done[readers_done_count] = true;
+            pthread_rwlock_unlock(&myLockFlags);
 
-                readers_done_count++;
+            readers_done_count++;
 
-                pthread_rwlock_wrlock(&myLockFile);
-                write(fileno(file), buffer, BUFFER_SIZE);
-                pthread_rwlock_unlock(&myLockFile);
-            }
-            pthread_rwlock_unlock(&myLockCount);
-
-            pthread_rwlock_unlock(&myLockRead);
+            pthread_rwlock_wrlock(&myLockFile);
+            write(1, bufferData.c_str(), bufferData.size());
+            pthread_rwlock_unlock(&myLockFile);
         }
+        pthread_rwlock_unlock(&myLockCount);
     }
 }
 
